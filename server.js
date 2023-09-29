@@ -9,71 +9,100 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static('public'));
 
+
 // Routes
+// Displays the home page.
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
   });
-  
+  //Displays the notes page.
   app.get('/notes', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'notes.html'));
   });
   
-  // Starting the server
+  // Binds the connections and listens to them in the specified PORT.
   app.listen(PORT, () => {
     console.log(`App listening on PORT: ${PORT}`);
   });
 
-  // Read db.json file and return all saved notes as JSON
-app.get('/notes', (req, res) => {
-    fs.readFile(path.join(__dirname, 'db.json'), 'utf8', (err, data) => {
-      if (err) {
-        return console.log(err);
-      }
-      return res.json(JSON.parse(data));
-    });
-  });
+//Reads the db.json file using fs and parses it into a js object.
+const readNotes = () => {
+  return new Promise((resolve, reject) => {
+    console.log("About to read the db.json file");
 
- // API POST request to save a new note
-app.post('/notes', (req, res) => {
-    fs.readFile(path.join(__dirname, 'db/db.json'), 'utf8', (err, data) => {
+    fs.readFile(path.join(__dirname, 'db', 'db.json'), 'utf8', (err, data) => {
       if (err) {
-        return console.log(err);
+        console.log('Error reading file:', err);
+        reject(err);
+      } else {
+        console.log('Successfully read file:', data);
+        resolve(JSON.parse(data));
       }
-      const notes = JSON.parse(data);
-      const newNote = req.body;
-      console.log(req.body);
-      console.log(newNote);
-      newNote.id = notes.length ? notes[notes.length - 1].id + 1 : 1;
-      console.log(notes);
-      notes.push(newNote);
-      console.log(notes);
+    });
+  });
+};
 
-  
-      fs.writeFile(path.join(__dirname, 'db/db.json'), JSON.stringify(notes), (err) => {
-        if (err) {
-          return console.log(err);
-        }
-        res.json(newNote);
-      });
-    });
-  });
-  
-  app.delete('/notes/:id', (req, res) => {
-    const noteId = parseInt(req.params.id);
-    fs.readFile(path.join(__dirname, 'db.json'), 'utf8', (err, data) => {
+//Writes a new note and converts into a JSON string.
+const writeNotes = (notes) => {
+  return new Promise((resolve, reject) => {
+    console.log("About to write to the db.json file", notes);
+
+    fs.writeFile(path.join(__dirname, 'db', 'db.json'), JSON.stringify(notes), 'utf8', (err) => {
       if (err) {
-        return res.status(500).json({ error: 'An error occurred while reading db.json.' });
+        console.log('Error writing file:', err);
+        reject(err);
+      } else {
+        console.log('Successfully wrote file.');
+        resolve();
       }
-      const notes = JSON.parse(data);
-      const updatedNotes = notes.filter(note => note.id !== noteId);
-      fs.writeFile(path.join(__dirname, 'db.json'), JSON.stringify(updatedNotes), (err) => {
-        if (err) {
-          return res.status(500).json({ error: 'An error occurred while writing to db.json.' });
-        }
-        res.status(200).json({ message: `Note with id ${noteId} has been deleted.` });
-      });
     });
   });
-  
-  
-  
+};
+
+//APIs
+// GET Endpoint to Retrieve All Notes
+app.get('/api/notes', (req, res) => {
+  readNotes()
+    .then((notes) => {
+      res.json(notes.notes);
+    })
+    .catch((err) => {
+      res.status(500).json({ error: err });
+    });
+});
+
+// POST Endpoint to Add a New Note
+app.post('/api/notes', (req, res) => {
+  const newNote = req.body;
+
+  readNotes()
+    .then((notes) => {
+      newNote.id = notes.notes.length + 1;
+      notes.notes.push(newNote);
+      return writeNotes(notes);
+    })
+    .then(() => {
+      res.json(newNote);
+    })
+    .catch((err) => {
+      res.status(500).json({ error: err });
+    });
+});
+
+// DELETE Endpoint to Remove a Note
+app.delete('/api/notes/:id', (req, res) => {
+  const id = parseInt(req.params.id);
+
+  readNotes()
+    .then((notes) => {
+      const newNotesArray = notes.notes.filter((note) => note.id !== id);
+      notes.notes = newNotesArray;
+      return writeNotes(notes);
+    })
+    .then(() => {
+      res.json({ id: id });
+    })
+    .catch((err) => {
+      res.status(500).json({ error: err });
+    });
+});
